@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <title>Admin · Perfil de Aprendizaje</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Space+Grotesk:wght@400;500;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+  <script src="https://www.gstatic.com/charts/loader.js"></script>
+</head>
+<body>
+
+  <!-- PANTALLA LOGIN ADMIN -->
+  <div class="card" id="screen-admin-login">
+    <div class="arcade-title">PANEL<br>ADMIN</div>
+    <label for="inputPassword">Contraseña de administrador</label>
+    <input type="password" id="inputPassword" autocomplete="off">
+    <div style="margin-top:18px;" class="center">
+      <button class="btn" id="btnAdminLogin">ENTRAR</button>
+    </div>
+    <div class="error" id="adminLoginError"></div>
+  </div>
+
+  <!-- PANTALLA DASHBOARD -->
+  <div class="card wide" id="screen-dashboard" style="display:none;">
+    <div class="arcade-title" style="font-size:16px;">PANEL DE ADMINISTRADOR</div>
+
+    <div class="two-col">
+      <div>
+        <label for="inputNombre">Generar nuevo código</label>
+        <input type="text" id="inputNombre" placeholder="Nombre de la persona">
+        <div style="margin-top:12px;">
+          <button class="btn secondary" id="btnGenerar">GENERAR CÓDIGO</button>
+        </div>
+        <div id="nuevoCodigoBox"></div>
+        <div class="error" id="generarError"></div>
+      </div>
+      <div>
+        <label>&nbsp;</label>
+        <button class="btn" id="btnRefrescar" style="width:100%;">🔄 ACTUALIZAR LISTA</button>
+      </div>
+    </div>
+
+    <table>
+      <thead>
+        <tr><th>Nombre</th><th>Código</th><th>Estado</th><th>Creado</th><th>Tiempo</th></tr>
+      </thead>
+      <tbody id="tablaPersonas"></tbody>
+    </table>
+    <div class="error" id="listaError"></div>
+  </div>
+
+  <!-- PANTALLA PERFIL INDIVIDUAL -->
+  <div class="card wide" id="screen-perfil" style="display:none;">
+    <span class="back-link" id="btnVolver">&larr; Volver al listado</span>
+    <div class="arcade-title" id="perfilNombre" style="font-size:16px; margin-top:16px;"></div>
+
+    <div class="two-col">
+      <div>
+        <div class="perfil-box">
+          <h3>PERFIL COGNITIVO (Sección 2)</h3>
+          <div id="chart_div" style="width:100%; height:260px;"></div>
+          <p style="text-align:center; margin-top:10px;">
+            Perfil dominante: <strong id="perfilDominanteTexto"></strong>
+          </p>
+          <p id="perfilDominanteDesc" style="font-size:14px;"></p>
+        </div>
+        <div class="perfil-box">
+          <h3>DINÁMICA Y METACOGNICIÓN (Sección 3)</h3>
+          <div id="seccion3Box"></div>
+        </div>
+      </div>
+      <div>
+        <div class="perfil-box">
+          <h3>RESPUESTAS ABIERTAS (Sección 1)</h3>
+          <div id="respuestasAbiertasBox"></div>
+        </div>
+        <p style="font-size:13px; color:#9aa4c7;">Tiempo total invertido: <strong id="tiempoTotalTexto"></strong></p>
+      </div>
+    </div>
+  </div>
+
+  <script src="config.js"></script>
+  <script>
+    google.charts.load('current', { packages: ['corechart'] });
+
+    var ADMIN_PASSWORD = null;
+
+    function show(id){
+      ['screen-admin-login','screen-dashboard','screen-perfil'].forEach(function(s){
+        document.getElementById(s).style.display = (s === id) ? 'block' : 'none';
+      });
+    }
+
+    // ---------------------------------------------------
+    // LOGIN ADMIN
+    // ---------------------------------------------------
+    document.getElementById('btnAdminLogin').addEventListener('click', function(){
+      var pass = document.getElementById('inputPassword').value;
+      var errBox = document.getElementById('adminLoginError');
+      errBox.textContent = '';
+      var btn = this;
+      btn.disabled = true;
+
+      callApi('validarAdmin', { password: pass })
+        .then(function(res){
+          btn.disabled = false;
+          if (!res.ok){
+            errBox.textContent = res.error || 'Contraseña incorrecta.';
+            return;
+          }
+          ADMIN_PASSWORD = pass;
+          show('screen-dashboard');
+          cargarPersonas();
+        })
+        .catch(function(err){
+          btn.disabled = false;
+          errBox.textContent = 'Error de conexión: ' + err.message;
+        });
+    });
+
+    // ---------------------------------------------------
+    // GENERAR CÓDIGO
+    // ---------------------------------------------------
+    document.getElementById('btnGenerar').addEventListener('click', function(){
+      var nombre = document.getElementById('inputNombre').value.trim();
+      var errBox = document.getElementById('generarError');
+      errBox.textContent = '';
+      if (!nombre){ errBox.textContent = 'Escribe un nombre.'; return; }
+
+      var btn = this;
+      btn.disabled = true;
+
+      callApi('generarCodigo', { password: ADMIN_PASSWORD, nombre: nombre })
+        .then(function(res){
+          btn.disabled = false;
+          if (!res.ok){ errBox.textContent = res.error || 'No se pudo generar el código.'; return; }
+          document.getElementById('nuevoCodigoBox').innerHTML =
+            '<div class="copy-box"><span>Código para <strong>' + nombre + '</strong>:</span> <span class="code">' + res.codigo + '</span></div>';
+          document.getElementById('inputNombre').value = '';
+          cargarPersonas();
+        })
+        .catch(function(err){
+          btn.disabled = false;
+          errBox.textContent = 'Error de conexión: ' + err.message;
+        });
+    });
+
+    // ---------------------------------------------------
+    // LISTADO
+    // ---------------------------------------------------
+    document.getElementById('btnRefrescar').addEventListener('click', cargarPersonas);
+
+    function badgeClase(estado){
+      if (estado === 'Completado') return 'badge completado';
+      if (estado === 'En Progreso') return 'badge progreso';
+      return 'badge pendiente';
+    }
+
+    function formatearTiempo(segundos){
+      segundos = segundos || 0;
+      var m = Math.floor(segundos / 60);
+      var s = segundos % 60;
+      return m + ' min ' + s + ' s';
+    }
+
+    function cargarPersonas(){
+      var errBox = document.getElementById('listaError');
+      errBox.textContent = '';
+      var tbody = document.getElementById('tablaPersonas');
+      tbody.innerHTML = '<tr><td colspan="5">Cargando...</td></tr>';
+
+      callApi('listarPersonas', { password: ADMIN_PASSWORD })
+        .then(function(res){
+          if (!res.ok){ errBox.textContent = res.error; tbody.innerHTML=''; return; }
+          tbody.innerHTML = '';
+          res.personas.forEach(function(p){
+            var tr = document.createElement('tr');
+            var esClickeable = p.estado !== 'Pendiente';
+            if (esClickeable) tr.className = 'clickable';
+            tr.innerHTML =
+              '<td>' + p.nombre + '</td>' +
+              '<td>' + p.codigo + '</td>' +
+              '<td><span class="' + badgeClase(p.estado) + '">' + p.estado + '</span></td>' +
+              '<td>' + p.fechaCreacion + '</td>' +
+              '<td>' + formatearTiempo(p.tiempoTotalSegundos) + '</td>';
+            if (esClickeable){
+              tr.addEventListener('click', function(){ verPerfil(p.codigo); });
+            }
+            tbody.appendChild(tr);
+          });
+        })
+        .catch(function(err){
+          errBox.textContent = 'Error de conexión: ' + err.message;
+          tbody.innerHTML = '';
+        });
+    }
+
+    // ---------------------------------------------------
+    // PERFIL INDIVIDUAL
+    // ---------------------------------------------------
+    document.getElementById('btnVolver').addEventListener('click', function(){
+      show('screen-dashboard');
+    });
+
+    var NOMBRES_PERFIL = { V:'Visual-Sintético', P:'Práctico-Contextual', A:'Analítico-Estructurado' };
+
+    function verPerfil(codigo){
+      callApi('obtenerPerfil', { password: ADMIN_PASSWORD, codigo: codigo })
+        .then(function(res){
+          if (!res.ok){ alert(res.error || 'No se pudo obtener el perfil.'); return; }
+          renderPerfil(res.perfil);
+          show('screen-perfil');
+        })
+        .catch(function(err){
+          alert('Error de conexión: ' + err.message);
+        });
+    }
+
+    function renderPerfil(perfil){
+      document.getElementById('perfilNombre').textContent = perfil.nombre;
+      document.getElementById('tiempoTotalTexto').textContent = formatearTiempo(perfil.tiempoTotalSegundos);
+
+      document.getElementById('perfilDominanteTexto').textContent =
+        NOMBRES_PERFIL[perfil.perfilDominante.letra] + ' (' + perfil.perfilDominante.letra + ')';
+      document.getElementById('perfilDominanteDesc').textContent = perfil.perfilDominante.info.descripcion;
+
+      // Gráfico
+      google.charts.setOnLoadCallback(function(){
+        var data = google.visualization.arrayToDataTable([
+          ['Perfil', 'Respuestas'],
+          ['Visual', perfil.conteo.V],
+          ['Práctico', perfil.conteo.P],
+          ['Analítico', perfil.conteo.A]
+        ]);
+        var options = {
+          backgroundColor: 'transparent',
+          colors: ['#3F88C5', '#F9A03F', '#E84855'],
+          legend: { position: 'none', textStyle: { color: '#F7F7FF' } },
+          hAxis: { textStyle: { color: '#F7F7FF' }, gridlines: { color: '#24305c' } },
+          vAxis: { textStyle: { color: '#F7F7FF' }, gridlines: { color: '#24305c' }, minValue: 0, maxValue: 5 },
+          chartArea: { width: '80%', height: '70%' }
+        };
+        var chart = new google.visualization.ColumnChart(document.getElementById('chart_div'));
+        chart.draw(data, options);
+      });
+
+      // Sección 3
+      var s3Box = document.getElementById('seccion3Box');
+      s3Box.innerHTML = '';
+      Object.keys(perfil.seccion3).forEach(function(key){
+        var item = perfil.seccion3[key];
+        if (!item) return;
+        var div = document.createElement('div');
+        div.className = 's3-item';
+        div.innerHTML = '<div class="titulo">' + item.titulo + '</div><div>' + item.detalle + '</div>';
+        s3Box.appendChild(div);
+      });
+
+      // Respuestas abiertas
+      var abiertasBox = document.getElementById('respuestasAbiertasBox');
+      abiertasBox.innerHTML = '';
+      var etiquetas = {
+        S1_1: 'Habilidad dominada y proceso de aprendizaje',
+        S1_2: 'Dificultad de aprendizaje y estrategia usada',
+        S1_3: 'Sesión de aprendizaje ideal'
+      };
+      Object.keys(etiquetas).forEach(function(key){
+        var div = document.createElement('div');
+        div.className = 'open-answer';
+        div.innerHTML = '<strong>' + etiquetas[key] + ':</strong><br>' + (perfil.respuestasAbiertas[key] || '—');
+        abiertasBox.appendChild(div);
+      });
+    }
+  </script>
+</body>
+</html>
