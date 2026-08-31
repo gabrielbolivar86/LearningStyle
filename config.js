@@ -5,7 +5,7 @@
 // 2. Copia la URL que termina en /exec y pégala abajo.
 // ==========================================================
 var CONFIG = {
-  API_URL: 'PEGA_AQUI_TU_URL_DE_APPS_SCRIPT/exec'
+  API_URL: 'https://script.google.com/macros/s/AKfycbx9grc5EVYfNRoAq8p_IbfPxiTJlZt4tiQXxrqEzASC6qTOthwyFgFAclzpZY3l2uWKoA/exec'
 };
 
 // Helper genérico para llamar a la API evitando el preflight de CORS
