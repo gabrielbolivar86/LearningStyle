@@ -87,11 +87,11 @@
           <p style="font-size:13px;">Si el intento tuvo un problema, puedes reiniciar el código para que la persona pueda volver a llenar el formulario.</p>
           <div style="display:flex; gap:10px; flex-wrap:wrap;">
             <button class="btn secondary" id="btnArchivar">📦 ARCHIVAR Y REINICIAR</button>
-            <button class="btn" id="btnBorrar" style="background:#a4222c; box-shadow:0 4px 0 #6e1620;">🗑️ BORRAR INTENTO</button>
+            <button class="btn" id="btnBorrar" style="background:#a4222c; box-shadow:0 4px 0 #6e1620;">🗑️ BORRAR PERFIL COMPLETO</button>
           </div>
           <p style="font-size:12px; color:#9aa4c7; margin-top:10px;">
-            <strong>Archivar</strong> guarda una copia de las respuestas en la hoja "Archivo" antes de reiniciar el código.<br>
-            <strong>Borrar</strong> elimina las respuestas de forma permanente. En ambos casos el código vuelve a estado "Pendiente".
+            <strong>Archivar</strong> guarda una copia de las respuestas en la hoja "Archivo" y deja el código en estado "Pendiente" para que la misma persona pueda volver a llenarlo.<br>
+            <strong>Borrar</strong> elimina de forma permanente el nombre, el código y las respuestas de esta persona. Ya no aparecerá en la lista y el código dejará de existir.
           </p>
         </div>
       </div>
@@ -278,14 +278,14 @@
     });
 
     document.getElementById('btnBorrar').addEventListener('click', function(){
-      if (!confirm('¿BORRAR este intento de forma permanente? Esta acción no se puede deshacer. El código volverá a estado "Pendiente" para que la persona pueda llenarlo de nuevo.')) return;
+      if (!confirm('¿BORRAR por completo a esta persona? Se eliminará su nombre, su código y sus respuestas de forma permanente. Esta acción no se puede deshacer y el código dejará de existir.')) return;
       var btn = this;
       btn.disabled = true;
       callApi('borrarIntento', { password: ADMIN_PASSWORD, codigo: CODIGO_ACTUAL })
         .then(function(res){
           btn.disabled = false;
           if (!res.ok){ alert(res.error || 'No se pudo borrar.'); return; }
-          alert('Intento borrado. El código ya está disponible de nuevo.');
+          alert('Perfil eliminado permanentemente.');
           show('screen-dashboard');
           cargarPersonas();
         })
