@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Space+Grotesk:wght@400;500;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="style.css">
-  <script src="https://www.gstatic.com/charts/loader.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
 </head>
 <body>
 
@@ -42,12 +42,14 @@
       </div>
     </div>
 
-    <table>
-      <thead>
-        <tr><th>Nombre</th><th>Código</th><th>Estado</th><th>Creado</th><th>Tiempo</th></tr>
-      </thead>
-      <tbody id="tablaPersonas"></tbody>
-    </table>
+    <div class="table-scroll">
+      <table>
+        <thead>
+          <tr><th>Nombre</th><th>Código</th><th>Estado</th><th>Creado</th><th>Tiempo</th></tr>
+        </thead>
+        <tbody id="tablaPersonas"></tbody>
+      </table>
+    </div>
     <div class="error" id="listaError"></div>
   </div>
 
@@ -60,7 +62,9 @@
       <div>
         <div class="perfil-box">
           <h3>PERFIL COGNITIVO (Sección 2)</h3>
-          <div id="chart_div" style="width:100%; height:260px;"></div>
+          <div style="max-width:360px; margin:0 auto;">
+            <canvas id="perfilRadarChart" width="360" height="300"></canvas>
+          </div>
           <p style="text-align:center; margin-top:10px;">
             Perfil dominante: <strong id="perfilDominanteTexto"></strong>
           </p>
@@ -77,15 +81,28 @@
           <div id="respuestasAbiertasBox"></div>
         </div>
         <p style="font-size:13px; color:#9aa4c7;">Tiempo total invertido: <strong id="tiempoTotalTexto"></strong></p>
+
+        <div class="perfil-box">
+          <h3>ZONA DE RIESGO</h3>
+          <p style="font-size:13px;">Si el intento tuvo un problema, puedes reiniciar el código para que la persona pueda volver a llenar el formulario.</p>
+          <div style="display:flex; gap:10px; flex-wrap:wrap;">
+            <button class="btn secondary" id="btnArchivar">📦 ARCHIVAR Y REINICIAR</button>
+            <button class="btn" id="btnBorrar" style="background:#a4222c; box-shadow:0 4px 0 #6e1620;">🗑️ BORRAR INTENTO</button>
+          </div>
+          <p style="font-size:12px; color:#9aa4c7; margin-top:10px;">
+            <strong>Archivar</strong> guarda una copia de las respuestas en la hoja "Archivo" antes de reiniciar el código.<br>
+            <strong>Borrar</strong> elimina las respuestas de forma permanente. En ambos casos el código vuelve a estado "Pendiente".
+          </p>
+        </div>
       </div>
     </div>
   </div>
 
   <script src="config.js"></script>
   <script>
-    google.charts.load('current', { packages: ['corechart'] });
-
     var ADMIN_PASSWORD = null;
+    var CODIGO_ACTUAL = null;
+    var chartInstance = null;
 
     function show(id){
       ['screen-admin-login','screen-dashboard','screen-perfil'].forEach(function(s){
@@ -97,10 +114,20 @@
     // LOGIN ADMIN
     // ---------------------------------------------------
     document.getElementById('btnAdminLogin').addEventListener('click', function(){
+      intentarLoginAdmin();
+    });
+    document.getElementById('inputPassword').addEventListener('keydown', function(e){
+      if (e.key === 'Enter'){
+        e.preventDefault();
+        intentarLoginAdmin();
+      }
+    });
+
+    function intentarLoginAdmin(){
       var pass = document.getElementById('inputPassword').value;
       var errBox = document.getElementById('adminLoginError');
+      var btn = document.getElementById('btnAdminLogin');
       errBox.textContent = '';
-      var btn = this;
       btn.disabled = true;
 
       callApi('validarAdmin', { password: pass })
@@ -118,18 +145,28 @@
           btn.disabled = false;
           errBox.textContent = 'Error de conexión: ' + err.message;
         });
-    });
+    }
 
     // ---------------------------------------------------
     // GENERAR CÓDIGO
     // ---------------------------------------------------
     document.getElementById('btnGenerar').addEventListener('click', function(){
+      generarCodigoHandler();
+    });
+    document.getElementById('inputNombre').addEventListener('keydown', function(e){
+      if (e.key === 'Enter'){
+        e.preventDefault();
+        generarCodigoHandler();
+      }
+    });
+
+    function generarCodigoHandler(){
       var nombre = document.getElementById('inputNombre').value.trim();
       var errBox = document.getElementById('generarError');
+      var btn = document.getElementById('btnGenerar');
       errBox.textContent = '';
       if (!nombre){ errBox.textContent = 'Escribe un nombre.'; return; }
 
-      var btn = this;
       btn.disabled = true;
 
       callApi('generarCodigo', { password: ADMIN_PASSWORD, nombre: nombre })
@@ -145,7 +182,7 @@
           btn.disabled = false;
           errBox.textContent = 'Error de conexión: ' + err.message;
         });
-    });
+    }
 
     // ---------------------------------------------------
     // LISTADO
@@ -207,6 +244,7 @@
     var NOMBRES_PERFIL = { V:'Visual-Sintético', P:'Práctico-Contextual', A:'Analítico-Estructurado' };
 
     function verPerfil(codigo){
+      CODIGO_ACTUAL = codigo;
       callApi('obtenerPerfil', { password: ADMIN_PASSWORD, codigo: codigo })
         .then(function(res){
           if (!res.ok){ alert(res.error || 'No se pudo obtener el perfil.'); return; }
@@ -218,6 +256,45 @@
         });
     }
 
+    // ---------------------------------------------------
+    // ARCHIVAR / BORRAR INTENTO
+    // ---------------------------------------------------
+    document.getElementById('btnArchivar').addEventListener('click', function(){
+      if (!confirm('¿Archivar este intento? Se guardará una copia de las respuestas en la hoja "Archivo" y el código volverá a estado "Pendiente" para que la persona pueda llenarlo de nuevo.')) return;
+      var btn = this;
+      btn.disabled = true;
+      callApi('archivarIntento', { password: ADMIN_PASSWORD, codigo: CODIGO_ACTUAL })
+        .then(function(res){
+          btn.disabled = false;
+          if (!res.ok){ alert(res.error || 'No se pudo archivar.'); return; }
+          alert('Intento archivado. El código ya está disponible de nuevo.');
+          show('screen-dashboard');
+          cargarPersonas();
+        })
+        .catch(function(err){
+          btn.disabled = false;
+          alert('Error de conexión: ' + err.message);
+        });
+    });
+
+    document.getElementById('btnBorrar').addEventListener('click', function(){
+      if (!confirm('¿BORRAR este intento de forma permanente? Esta acción no se puede deshacer. El código volverá a estado "Pendiente" para que la persona pueda llenarlo de nuevo.')) return;
+      var btn = this;
+      btn.disabled = true;
+      callApi('borrarIntento', { password: ADMIN_PASSWORD, codigo: CODIGO_ACTUAL })
+        .then(function(res){
+          btn.disabled = false;
+          if (!res.ok){ alert(res.error || 'No se pudo borrar.'); return; }
+          alert('Intento borrado. El código ya está disponible de nuevo.');
+          show('screen-dashboard');
+          cargarPersonas();
+        })
+        .catch(function(err){
+          btn.disabled = false;
+          alert('Error de conexión: ' + err.message);
+        });
+    });
+
     function renderPerfil(perfil){
       document.getElementById('perfilNombre').textContent = perfil.nombre;
       document.getElementById('tiempoTotalTexto').textContent = formatearTiempo(perfil.tiempoTotalSegundos);
@@ -226,24 +303,37 @@
         NOMBRES_PERFIL[perfil.perfilDominante.letra] + ' (' + perfil.perfilDominante.letra + ')';
       document.getElementById('perfilDominanteDesc').textContent = perfil.perfilDominante.info.descripcion;
 
-      // Gráfico
-      google.charts.setOnLoadCallback(function(){
-        var data = google.visualization.arrayToDataTable([
-          ['Perfil', 'Respuestas'],
-          ['Visual', perfil.conteo.V],
-          ['Práctico', perfil.conteo.P],
-          ['Analítico', perfil.conteo.A]
-        ]);
-        var options = {
-          backgroundColor: 'transparent',
-          colors: ['#3F88C5', '#F9A03F', '#E84855'],
-          legend: { position: 'none', textStyle: { color: '#F7F7FF' } },
-          hAxis: { textStyle: { color: '#F7F7FF' }, gridlines: { color: '#24305c' } },
-          vAxis: { textStyle: { color: '#F7F7FF' }, gridlines: { color: '#24305c' }, minValue: 0, maxValue: 5 },
-          chartArea: { width: '80%', height: '70%' }
-        };
-        var chart = new google.visualization.ColumnChart(document.getElementById('chart_div'));
-        chart.draw(data, options);
+      // Gráfico radial (Chart.js)
+      var ctx = document.getElementById('perfilRadarChart').getContext('2d');
+      if (chartInstance) chartInstance.destroy();
+      chartInstance = new Chart(ctx, {
+        type: 'radar',
+        data: {
+          labels: ['Visual', 'Práctico', 'Analítico'],
+          datasets: [{
+            label: 'Respuestas',
+            data: [perfil.conteo.V, perfil.conteo.P, perfil.conteo.A],
+            backgroundColor: 'rgba(249,160,63,0.28)',
+            borderColor: '#F9A03F',
+            pointBackgroundColor: '#E84855',
+            pointBorderColor: '#E84855',
+            borderWidth: 2
+          }]
+        },
+        options: {
+          responsive: true,
+          scales: {
+            r: {
+              min: 0,
+              max: 5,
+              ticks: { stepSize: 1, color: '#F7F7FF', backdropColor: 'transparent' },
+              grid: { color: '#24305c' },
+              angleLines: { color: '#24305c' },
+              pointLabels: { color: '#F7F7FF', font: { size: 13, family: "'Space Grotesk', sans-serif" } }
+            }
+          },
+          plugins: { legend: { display: false } }
+        }
       });
 
       // Sección 3

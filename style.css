@@ -91,6 +91,13 @@ textarea{ min-height:110px; resize:vertical; }
 }
 .question{ margin-bottom:22px; }
 .question p.enunciado{ font-size:15px; line-height:1.5; margin:0 0 10px; }
+.question p.hint{
+  font-size:12.5px;
+  font-style:italic;
+  color:#9aa4c7;
+  margin:-4px 0 10px;
+  line-height:1.4;
+}
 .options label.opt{
   display:flex;
   align-items:flex-start;
@@ -122,8 +129,32 @@ textarea{ min-height:110px; resize:vertical; }
 .thankyou{ text-align:center; }
 .thankyou .arcade-title{ color:var(--red); }
 
+/* Navegación por secciones (vistas separadas) */
+.section-page{ display:none; }
+.section-page.active{ display:block; }
+.section-nav{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  margin-top:28px;
+  flex-wrap:wrap;
+}
+.section-indicator{
+  font-size:12px;
+  color:#9aa4c7;
+  text-align:center;
+  flex:1;
+  min-width:100px;
+  order:3;
+}
+@media (min-width:480px){
+  .section-indicator{ order:0; }
+}
+
 /* Admin */
-table{ width:100%; border-collapse:collapse; margin-top:16px; font-size:14px; }
+.table-scroll{ width:100%; overflow-x:auto; -webkit-overflow-scrolling:touch; }
+table{ width:100%; border-collapse:collapse; margin-top:16px; font-size:14px; min-width:520px; }
 th, td{ text-align:left; padding:10px; border-bottom:1px solid #24305c; }
 th{ color:var(--orange); font-size:12px; text-transform:uppercase; letter-spacing:.5px; }
 tr.clickable{ cursor:pointer; }
@@ -148,3 +179,33 @@ tr.clickable:hover{ background:#1A2140; }
   border-radius:8px; padding:12px; margin-top:12px;
 }
 .copy-box .code{ font-family:'Press Start 2P', cursive; font-size:16px; color:var(--orange); letter-spacing:2px; }
+
+/* ============================================
+   RESPONSIVO (móvil)
+   ============================================ */
+@media (max-width:600px){
+  body{ padding:12px; align-items:flex-start; }
+  .card{ padding:20px 16px; border-radius:12px; margin-top:12px; }
+  .card.wide{ padding:18px 14px; }
+  .arcade-title{ font-size:16px; margin-bottom:18px; }
+  .welcome-icon{ font-size:38px; }
+  .btn{ font-size:11px; padding:14px 16px; width:100%; }
+  .actions{ flex-direction:column; }
+  .actions .btn{ width:100%; }
+  .section-nav{ flex-direction:column; }
+  .section-nav .btn{ width:100%; order:2; }
+  #btnAnteriorSeccion{ order:1; }
+  #btnSiguienteSeccion{ order:3; }
+  .two-col{ flex-direction:column; gap:0; }
+  .two-col > div{ min-width:0; }
+  table{ font-size:12.5px; }
+  th, td{ padding:8px 6px; }
+  .options label.opt{ padding:10px; font-size:14px; }
+  .perfil-box{ padding:14px; }
+  .copy-box{ flex-direction:column; align-items:flex-start; }
+}
+
+@media (max-width:380px){
+  .arcade-title{ font-size:14px; }
+  .btn{ font-size:10px; }
+}

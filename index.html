@@ -39,8 +39,10 @@
       <div class="progress-bar-outer"><div class="progress-bar-inner" id="progressBar"></div></div>
       <div class="save-indicator" id="saveIndicator">&nbsp;</div>
       <div id="quizContainer"></div>
-      <div class="actions">
-        <button class="btn secondary" id="btnSubmit">ENVIAR RESPUESTAS</button>
+      <div class="section-nav">
+        <button class="btn secondary" id="btnAnteriorSeccion">◀ ANTERIOR</button>
+        <span class="section-indicator" id="sectionIndicator"></span>
+        <button class="btn" id="btnSiguienteSeccion">SIGUIENTE ▶</button>
       </div>
       <div class="error" id="submitError"></div>
     </div>
@@ -52,6 +54,28 @@
       <p>Tus respuestas fueron enviadas correctamente. Ya puedes cerrar esta ventana.</p>
     </div>
 
+    <!-- PANTALLA 5: CÓDIGO YA UTILIZADO -->
+    <div id="screen-already-done" class="screen thankyou">
+      <div class="welcome-icon">🔒</div>
+      <div class="arcade-title">YA COMPLETADO</div>
+      <p>Este cuestionario solo se puede llenar <strong>una vez</strong>, y este código ya fue utilizado.</p>
+      <p>Si necesitas volver a realizarlo, por favor contacta al administrador de esta página.</p>
+    </div>
+
+    <!-- PANTALLA 6: ERROR AL ENVIAR -->
+    <div id="screen-error" class="screen thankyou">
+      <div class="welcome-icon">⚠️</div>
+      <div class="arcade-title" style="color:var(--red);">ALGO SALIÓ MAL</div>
+      <p>No se pudo enviar tu formulario en este momento. <strong>Tus respuestas están guardadas</strong> en este dispositivo, no las perdiste.</p>
+      <p style="font-size:13px; color:#9aa4c7;">Código de referencia: <strong id="errorCodeText"></strong></p>
+      <p style="font-size:13px; color:#9aa4c7;" id="errorDetailText"></p>
+      <div class="center" style="margin-top:16px; display:flex; gap:10px; justify-content:center; flex-wrap:wrap;">
+        <button class="btn secondary" id="btnRevisarRespuestas">REVISAR RESPUESTAS</button>
+        <button class="btn" id="btnReintentar">REINTENTAR ENVÍO</button>
+      </div>
+      <p style="font-size:12px; color:#9aa4c7; margin-top:16px;">Si el problema persiste, contacta al administrador de la página e indícale el código de referencia.</p>
+    </div>
+
   </div>
 
   <script src="config.js"></script>
@@ -60,9 +84,12 @@
     // DEFINICIÓN DE PREGUNTAS
     // ---------------------------------------------------
     var SECCION1 = [
-      { id:'S1_1', tipo:'texto', enunciado:'1. Describe una habilidad o área de conocimiento que domines ampliamente. ¿Cómo fue tu proceso de aprendizaje desde cero y qué recurso o método facilitó tu comprensión?' },
-      { id:'S1_2', tipo:'texto', enunciado:'2. Recuerda una ocasión en la que hayas experimentado dificultades al aprender un tema. ¿Qué aspectos de la explicación o del material resultaron confusos y qué estrategia te ayudó a superar ese obstáculo?' },
-      { id:'S1_3', tipo:'texto', enunciado:'3. Si pudieras estructurar una sesión ideal de aprendizaje de 60 minutos, ¿cómo distribuirías el tiempo, qué recursos utilizarías y qué rol esperarías del facilitador?' }
+      { id:'S1_1', tipo:'texto', enunciado:'1. Describe una habilidad o área de conocimiento que domines ampliamente. ¿Cómo fue tu proceso de aprendizaje desde cero y qué recurso o método facilitó tu comprensión?',
+        ejemplo:'Ejemplos: resolver el cubo Rubik, inglés, matemáticas, alguna materia específica de la universidad, cocina, tocar guitarra, edición de video, un deporte, etc.' },
+      { id:'S1_2', tipo:'texto', enunciado:'2. Recuerda una ocasión en la que hayas experimentado dificultades al aprender un tema. ¿Qué aspectos de la explicación o del material resultaron confusos y qué estrategia te ayudó a superar ese obstáculo?',
+        ejemplo:'Ejemplos: una materia difícil del colegio o la universidad, un idioma nuevo, un instrumento musical, un software o herramienta técnica, un trámite complicado, etc.' },
+      { id:'S1_3', tipo:'texto', enunciado:'3. Si pudieras estructurar una sesión ideal de aprendizaje de 60 minutos, ¿cómo distribuirías el tiempo, qué recursos utilizarías y qué rol esperarías del facilitador?',
+        ejemplo:'Piensa en: ¿empezarías con teoría o con la práctica? ¿usarías videos, lecturas, ejercicios? ¿cuánto tiempo de descanso necesitas?' }
     ];
 
     var SECCION2 = [
@@ -122,7 +149,8 @@
     var respuestas = {};
     var sessionStart = null;
     var LOCAL_KEY = null;
-    var pendienteDeReenvio = false;
+    var seccionesRender = [];
+    var currentSectionIndex = 0;
 
     function showScreen(id){
       document.querySelectorAll('.screen').forEach(function(s){ s.classList.remove('active'); });
@@ -133,12 +161,22 @@
     // LOGIN
     // ---------------------------------------------------
     document.getElementById('btnLogin').addEventListener('click', function(){
+      intentarLogin();
+    });
+    document.getElementById('inputCodigo').addEventListener('keydown', function(e){
+      if (e.key === 'Enter'){
+        e.preventDefault();
+        intentarLogin();
+      }
+    });
+
+    function intentarLogin(){
       var codigo = document.getElementById('inputCodigo').value.trim().toUpperCase();
       var errBox = document.getElementById('loginError');
+      var btn = document.getElementById('btnLogin');
       errBox.textContent = '';
       if (!codigo){ errBox.textContent = 'Ingresa un código.'; return; }
 
-      var btn = this;
       btn.disabled = true;
 
       callApi('validarCodigo', { codigo: codigo })
@@ -149,7 +187,7 @@
             return;
           }
           if (res.completado){
-            errBox.textContent = res.mensaje;
+            showScreen('screen-already-done');
             return;
           }
           CODIGO = res.codigo;
@@ -169,15 +207,19 @@
           btn.disabled = false;
           errBox.textContent = 'Error de conexión: ' + err.message;
         });
-    });
+    }
 
     // ---------------------------------------------------
-    // EMPEZAR CUESTIONARIO
+    // EMPEZAR CUESTIONARIO (una sección/vista a la vez)
     // ---------------------------------------------------
-    var todasLasPreguntas = [];
     document.getElementById('btnEmpezar').addEventListener('click', function(){
       sessionStart = Date.now();
-      todasLasPreguntas = SECCION1.concat(shuffle(SECCION2)).concat(shuffle(SECCION3));
+      seccionesRender = [
+        { titulo: 'SECCIÓN 1', preguntas: SECCION1 },
+        { titulo: 'SECCIÓN 2', preguntas: shuffle(SECCION2) },
+        { titulo: 'SECCIÓN 3', preguntas: shuffle(SECCION3) }
+      ];
+      currentSectionIndex = 0;
       renderQuiz();
       showScreen('screen-quiz');
     });
@@ -186,27 +228,66 @@
       var container = document.getElementById('quizContainer');
       container.innerHTML = '';
 
-      var s1 = document.createElement('div');
-      s1.innerHTML = '<div class="section-title">SECCIÓN 1</div>';
-      container.appendChild(s1);
-      SECCION1.forEach(function(q){ container.appendChild(renderPregunta(q)); });
+      seccionesRender.forEach(function(sec, idx){
+        var secDiv = document.createElement('div');
+        secDiv.className = 'section-page' + (idx === currentSectionIndex ? ' active' : '');
+        secDiv.id = 'sectionPage_' + idx;
 
-      var s2 = document.createElement('div');
-      s2.innerHTML = '<div class="section-title">SECCIÓN 2</div>';
-      container.appendChild(s2);
-      todasLasPreguntas.filter(function(q){ return q.id.indexOf('S2') === 0; }).forEach(function(q){
-        container.appendChild(renderPregunta(q));
+        var title = document.createElement('div');
+        title.className = 'section-title';
+        title.textContent = sec.titulo;
+        secDiv.appendChild(title);
+
+        sec.preguntas.forEach(function(q){ secDiv.appendChild(renderPregunta(q)); });
+        container.appendChild(secDiv);
       });
 
-      var s3 = document.createElement('div');
-      s3.innerHTML = '<div class="section-title">SECCIÓN 3</div>';
-      container.appendChild(s3);
-      todasLasPreguntas.filter(function(q){ return q.id.indexOf('S3') === 0; }).forEach(function(q){
-        container.appendChild(renderPregunta(q));
-      });
-
+      actualizarNav();
       updateProgress();
     }
+
+    function irASeccion(idx){
+      document.querySelectorAll('.section-page').forEach(function(el){ el.classList.remove('active'); });
+      document.getElementById('sectionPage_' + idx).classList.add('active');
+      currentSectionIndex = idx;
+      actualizarNav();
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    function actualizarNav(){
+      var total = seccionesRender.length;
+      var esUltima = currentSectionIndex === total - 1;
+
+      document.getElementById('btnAnteriorSeccion').disabled = (currentSectionIndex === 0);
+      document.getElementById('btnSiguienteSeccion').textContent = esUltima ? 'ENVIAR RESPUESTAS' : 'SIGUIENTE ▶';
+      document.getElementById('sectionIndicator').textContent = 'Sección ' + (currentSectionIndex + 1) + ' de ' + total;
+      document.getElementById('submitError').textContent = '';
+    }
+
+    document.getElementById('btnAnteriorSeccion').addEventListener('click', function(){
+      if (currentSectionIndex > 0) irASeccion(currentSectionIndex - 1);
+    });
+
+    document.getElementById('btnSiguienteSeccion').addEventListener('click', function(){
+      var esUltima = currentSectionIndex === seccionesRender.length - 1;
+      if (!esUltima){
+        irASeccion(currentSectionIndex + 1);
+        return;
+      }
+
+      // Última sección: validar todo y enviar
+      var todosIds = SECCION1.concat(SECCION2).concat(SECCION3).map(function(q){ return q.id; });
+      var faltantes = todosIds.filter(function(id){ return !respuestas[id]; });
+      var errBox = document.getElementById('submitError');
+
+      if (faltantes.length > 0){
+        errBox.textContent = 'Te faltan ' + faltantes.length + ' pregunta(s) por responder antes de enviar.';
+        return;
+      }
+      errBox.textContent = '';
+      this.disabled = true;
+      guardarEnServidor(true);
+    });
 
     function renderPregunta(q){
       var div = document.createElement('div');
@@ -217,6 +298,13 @@
       p.className = 'enunciado';
       p.textContent = q.enunciado;
       div.appendChild(p);
+
+      if (q.ejemplo){
+        var hint = document.createElement('p');
+        hint.className = 'hint';
+        hint.textContent = q.ejemplo;
+        div.appendChild(hint);
+      }
 
       if (q.tipo === 'texto'){
         var ta = document.createElement('textarea');
@@ -275,6 +363,21 @@
       }, 1200);
     }
 
+    // ---------------------------------------------------
+    // MANEJO DE ERRORES CON CÓDIGO DE REFERENCIA + LOG
+    // ---------------------------------------------------
+    function generarCodigoError(contexto){
+      return 'ERR-' + contexto + '-' + Date.now().toString(36).toUpperCase();
+    }
+
+    function registrarErrorRemoto(codigo, errorCode, contexto, mensaje){
+      // Best-effort: si esta llamada también falla (sin internet), simplemente se ignora.
+      try {
+        callApi('logError', { codigo: codigo || '', errorCode: errorCode, contexto: contexto, mensaje: mensaje })
+          .catch(function(){});
+      } catch(e){}
+    }
+
     function guardarEnServidor(esEnvioFinal){
       var ahora = Date.now();
       var delta = sessionStart ? Math.round((ahora - sessionStart) / 1000) : 0;
@@ -283,7 +386,7 @@
       var indicator = document.getElementById('saveIndicator');
       var accion = esEnvioFinal ? 'enviarRespuestasFinal' : 'guardarBorrador';
 
-      callApi(accion, { codigo: CODIGO, respuestas: respuestas, deltaSegundos: delta })
+      return callApi(accion, { codigo: CODIGO, respuestas: respuestas, deltaSegundos: delta })
         .then(function(res){
           if (!res.ok){ throw new Error(res.error || 'Error desconocido'); }
           if (!esEnvioFinal){
@@ -295,12 +398,18 @@
           }
         })
         .catch(function(err){
-          indicator.textContent = 'Sin conexión, guardado localmente';
-          if (esEnvioFinal){
-            document.getElementById('submitError').textContent =
-              'No se pudo conectar. Tus respuestas están guardadas en este navegador; vuelve a intentar enviar cuando tengas internet.';
-            document.getElementById('btnSubmit').disabled = false;
+          if (!esEnvioFinal){
+            indicator.textContent = 'Sin conexión, guardado localmente';
+            registrarErrorRemoto(CODIGO, generarCodigoError('DRAFT'), 'DRAFT', err.message);
+            return;
           }
+          // Error en el envío final: mostrar pantalla de error con código de referencia.
+          // El progreso ya está guardado en localStorage, así que no se pierde nada.
+          var errorCode = generarCodigoError('SUBMIT');
+          registrarErrorRemoto(CODIGO, errorCode, 'SUBMIT', err.message);
+          document.getElementById('errorCodeText').textContent = errorCode;
+          document.getElementById('errorDetailText').textContent = 'Detalle: ' + (err.message || 'error desconocido');
+          showScreen('screen-error');
         });
     }
 
@@ -314,20 +423,19 @@
     }
 
     // ---------------------------------------------------
-    // ENVÍO FINAL
+    // PANTALLA DE ERROR: reintentar o revisar respuestas
     // ---------------------------------------------------
-    document.getElementById('btnSubmit').addEventListener('click', function(){
-      var todosIds = SECCION1.concat(SECCION2).concat(SECCION3).map(function(q){ return q.id; });
-      var faltantes = todosIds.filter(function(id){ return !respuestas[id]; });
-      var errBox = document.getElementById('submitError');
+    document.getElementById('btnRevisarRespuestas').addEventListener('click', function(){
+      document.getElementById('submitError').textContent = '';
+      document.getElementById('btnSiguienteSeccion').disabled = false;
+      irASeccion(seccionesRender.length - 1);
+      showScreen('screen-quiz');
+    });
 
-      if (faltantes.length > 0){
-        errBox.textContent = 'Te faltan ' + faltantes.length + ' pregunta(s) por responder.';
-        return;
-      }
-      errBox.textContent = '';
-      this.disabled = true;
-      guardarEnServidor(true);
+    document.getElementById('btnReintentar').addEventListener('click', function(){
+      var btn = this;
+      btn.disabled = true;
+      guardarEnServidor(true).finally(function(){ btn.disabled = false; });
     });
   </script>
 </body>
